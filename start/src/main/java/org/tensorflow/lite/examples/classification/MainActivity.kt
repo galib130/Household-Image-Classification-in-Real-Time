@@ -23,8 +23,10 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.os.Bundle
+import android.speech.tts.TextToSpeech
 import android.util.Log
 import android.util.Size
+import android.widget.Button
 import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -39,12 +41,18 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Observer
 import androidx.recyclerview.widget.RecyclerView
+import org.tensorflow.lite.DataType
+import org.tensorflow.lite.examples.classification.ml.ConvertedModel
+import org.tensorflow.lite.examples.classification.ml.ConvertedModelvgg
 import org.tensorflow.lite.examples.classification.ui.RecognitionAdapter
 import org.tensorflow.lite.examples.classification.util.YuvToRgbConverter
 import org.tensorflow.lite.examples.classification.viewmodel.Recognition
 import org.tensorflow.lite.examples.classification.viewmodel.RecognitionListViewModel
+import org.tensorflow.lite.support.image.TensorImage
+import org.tensorflow.lite.support.tensorbuffer.TensorBuffer
+import java.io.InputStream
+import java.util.*
 import java.util.concurrent.Executors
-import kotlin.random.Random
 
 // Constants
 private const val MAX_RESULT_DISPLAY = 3 // Maximum number of results displayed
@@ -58,7 +66,12 @@ typealias RecognitionListener = (recognition: List<Recognition>) -> Unit
 /**
  * Main entry point into TensorFlow Lite Classifier
  */
-class MainActivity : AppCompatActivity() {
+var result: String?=null
+private var tts: TextToSpeech? = null
+private var btnSpeak: Button? = null
+val lineList= mutableListOf<String>()
+class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener{
+
 
     // CameraX variables
     private lateinit var preview: Preview // Preview use case, fast, responsive view of the camera
@@ -80,7 +93,17 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        btnSpeak = findViewById(R.id.button4)
+        btnSpeak!!.isEnabled = false
+        tts = TextToSpeech(this, this)
+        btnSpeak!!.setOnClickListener { result?.let { it1 -> speakOut(it1) } }
 
+        val inputStream:InputStream= assets.open("labels.txt")
+
+
+        inputStream.bufferedReader().useLines { lines -> lines.forEach { lineList.add(it)} }
+
+        lineList.forEach{println(">  " + it)}
         // Request camera permissions
         if (allPermissionsGranted()) {
             startCamera()
@@ -107,6 +130,10 @@ class MainActivity : AppCompatActivity() {
             }
         )
 
+    }
+
+    private fun speakOut(x:String): Unit {
+    tts!!.speak(x, TextToSpeech.QUEUE_FLUSH, null,"")
     }
 
     /**
@@ -209,6 +236,7 @@ class MainActivity : AppCompatActivity() {
         // TODO 1: Add class variable TensorFlow Lite Model
         // Initializing the flowerModel by lazy so that it runs in the same thread when the process
         // method is called.
+        private val convertedModel = ConvertedModelvgg.newInstance(ctx)
 
         // TODO 6. Optional GPU acceleration
 
@@ -218,20 +246,58 @@ class MainActivity : AppCompatActivity() {
             val items = mutableListOf<Recognition>()
 
             // TODO 2: Convert Image to Bitmap then to TensorImage
+            var tfImage = toBitmap(imageProxy)
+            tfImage= tfImage?.let { Bitmap.createScaledBitmap(it, 224, 224, true) }
+            val tensorImage = TensorImage(DataType.FLOAT32)
+            tensorImage.load(tfImage)
+            val byteBuffer = tensorImage.buffer
+            val inputFeature0 = TensorBuffer.createFixedSize(intArrayOf(1, 224,224,3), DataType.FLOAT32)
+            inputFeature0.loadBuffer(byteBuffer)
+            val outputed = convertedModel.process(inputFeature0)
+            val outputFeature0 = outputed.outputFeature0AsTensorBuffer
+            var map_result = hashMapOf<String, Float>()
+            var sorted_result= mapOf<String,Float>()
+            for(i in 0..33){
+            map_result.put(lineList[i],outputFeature0.getFloatValue(i))
+               sorted_result=map_result.toList().sortedByDescending { (_, value) -> value}.toMap()
 
+            var i=0;
+              for(entry in sorted_result){
+                  System.out.println(entry.key + "Result")
+                  System.out.println(entry.value.toString()+ "Value")
+                  i++;
+
+                  if(i==1)
+                      break;
+              }
+
+
+           }
             // TODO 3: Process the image using the trained model, sort and pick out the top results
+//            val outputs = flowerModel.process(tfImage)
+//                .probabilityAsCategoryList.apply {
+//                    sortByDescending { it.score } // Sort with highest confidence first
+//                }.take(MAX_RESULT_DISPLAY) // take the top results
+
+            System.out.println(outputFeature0.getFloatValue(0)*100);
 
             // TODO 4: Converting the top probability items into a list of recognitions
-
-            // START - Placeholder code at the start of the codelab. Comment this block of code out.
-            for (i in 0 until MAX_RESULT_DISPLAY){
-                items.add(Recognition("Fake label $i", Random.nextFloat()))
+            var i=0;
+            for (output in sorted_result) {
+                items.add(Recognition(output.key, output.value))
+               i++;
+               if(i==3)
+                   break;
             }
+            // START - Placeholder code at the start of the codelab. Comment this block of code out.
+//            for (i in 0 until MAX_RESULT_DISPLAY){
+//                items.add(Recognition("Fake label $i", Random.nextFloat()))
+//            }
             // END - Placeholder code at the start of the codelab. Comment this block of code out.
 
             // Return the result
             listener(items.toList())
-
+            result= items[0].label.toString()
             // Close the image,this tells CameraX to feed the next image to the analyzer
             imageProxy.close()
         }
@@ -274,6 +340,27 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
+    }
+
+    override fun onInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) {
+            val result = tts!!.setLanguage(Locale.US)
+
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                Log.e("TTS","The Language not supported!")
+            } else {
+                btnSpeak!!.isEnabled = true
+            }
+        }
+    }
+    public override fun onDestroy() {
+        // Shutdown TTS when
+        // activity is destroyed
+        if (tts != null) {
+            tts!!.stop()
+            tts!!.shutdown()
+        }
+        super.onDestroy()
     }
 
 }

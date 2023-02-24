@@ -158,9 +158,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener{
                 startCamera()
             } else {
                 // Exit the app if permission is not granted
-                // Best practice is to explain and offer a chance to re-request but this is out of
-                // scope in this sample. More details:
-                // https://developer.android.com/training/permissions/usage-notes
                 Toast.makeText(
                     this,
                     getString(R.string.permission_deny_text),
@@ -234,7 +231,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener{
         ImageAnalysis.Analyzer {
 
         // TODO 1: Add class variable TensorFlow Lite Model
-        // Initializing the flowerModel by lazy so that it runs in the same thread when the process
+        // Initializing the Model by lazy so that it runs in the same thread when the process
         // method is called.
         private val convertedModel = ConvertedModelvgg.newInstance(ctx)
 
@@ -274,10 +271,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener{
 
            }
             // TODO 3: Process the image using the trained model, sort and pick out the top results
-//            val outputs = flowerModel.process(tfImage)
-//                .probabilityAsCategoryList.apply {
-//                    sortByDescending { it.score } // Sort with highest confidence first
-//                }.take(MAX_RESULT_DISPLAY) // take the top results
+
 
             System.out.println(outputFeature0.getFloatValue(0)*100);
 
@@ -289,11 +283,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener{
                if(i==3)
                    break;
             }
-            // START - Placeholder code at the start of the codelab. Comment this block of code out.
-//            for (i in 0 until MAX_RESULT_DISPLAY){
-//                items.add(Recognition("Fake label $i", Random.nextFloat()))
-//            }
-            // END - Placeholder code at the start of the codelab. Comment this block of code out.
+
 
             // Return the result
             listener(items.toList())
@@ -341,11 +331,11 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener{
         }
 
     }
-
+    //Added init function for text to speech feature
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
             val result = tts!!.setLanguage(Locale.US)
-
+            //If language provided is not supported
             if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
                 Log.e("TTS","The Language not supported!")
             } else {
